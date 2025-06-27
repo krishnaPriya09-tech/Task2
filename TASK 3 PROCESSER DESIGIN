@@ -1,0 +1,84 @@
+// Simple 4-stage pipelined processor skeleton
+
+module pipelined_processor (
+    input clk,
+    input reset
+);
+
+// --- Registers ---
+reg [15:0] PC;
+reg [15:0] InstructionMemory[0:255];
+reg [15:0] DataMemory[0:255];
+reg [15:0] RegisterFile[0:15];
+
+// --- Pipeline Registers ---
+reg [15:0] IF_ID_instr;
+reg [15:0] ID_EX_A, ID_EX_B, ID_EX_imm;
+reg [3:0]  ID_EX_opcode, ID_EX_rd;
+reg [15:0] EX_WB_result;
+reg [3:0]  EX_WB_rd;
+reg        EX_WB_memToReg;
+
+// --- Stage 1: Instruction Fetch (IF) ---
+always @(posedge clk or posedge reset) begin
+    if (reset) begin
+        PC <= 0;
+    end else begin
+        IF_ID_instr <= InstructionMemory[PC];
+        PC <= PC + 1;
+    end
+end
+
+// --- Stage 2: Instruction Decode/Register Fetch (ID) ---
+wire [3:0] opcode = IF_ID_instr[15:12];
+wire [3:0] rd     = IF_ID_instr[11:8];
+wire [3:0] rs1    = IF_ID_instr[7:4];
+wire [3:0] rs2    = IF_ID_instr[3:0];
+
+always @(posedge clk) begin
+    ID_EX_opcode <= opcode;
+    ID_EX_rd     <= rd;
+    ID_EX_A      <= RegisterFile[rs1];
+    ID_EX_B      <= RegisterFile[rs2];
+    ID_EX_imm    <= IF_ID_instr[7:0]; // for load/store
+end
+
+// --- Stage 3: Execute/Memory Access (EX) ---
+reg [15:0] alu_result;
+reg        memToReg;
+
+always @(*) begin
+    case (ID_EX_opcode)
+        4'b0001: begin // ADD
+            alu_result = ID_EX_A + ID_EX_B;
+            memToReg = 0;
+        end
+        4'b0010: begin // SUB
+            alu_result = ID_EX_A - ID_EX_B;
+            memToReg = 0;
+        end
+        4'b0011: begin // LOAD
+            alu_result = DataMemory[ID_EX_A];
+            memToReg = 1;
+        end
+        default: begin
+            alu_result = 0;
+            memToReg = 0;
+        end
+    endcase
+end
+
+always @(posedge clk) begin
+    EX_WB_result  <= alu_result;
+    EX_WB_rd      <= ID_EX_rd;
+    EX_WB_memToReg<= memToReg;
+end
+
+// --- Stage 4: Write Back (WB) ---
+always @(posedge clk) begin
+    if (EX_WB_rd != 0) begin
+        RegisterFile[EX_WB_rd] <= EX_WB_result;
+    end
+end
+
+endmodule
